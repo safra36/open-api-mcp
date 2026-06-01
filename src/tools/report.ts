@@ -1,0 +1,53 @@
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import { runAssert } from "../assert.js";
+import { buildReport, exportReport } from "../report.js";
+import type { Session } from "../session.js";
+import { text } from "../util.js";
+
+export function registerReport(server: McpServer, session: Session): void {
+  server.registerTool(
+    "assert",
+    {
+      title: "Assert",
+      description:
+        "Assert a condition about the last HTTP response and record the result for export_report. Combine any of: status, bodyContains, jsonPointer+equals, schemaValid, or a JS expression (with `res` and `body` in scope).",
+      inputSchema: {
+        name: z.string().describe("a label for this check"),
+        status: z.number().optional(),
+        bodyContains: z.string().optional(),
+        jsonPointer: z.string().optional().describe("JSON pointer into the response body, e.g. /data/0/id"),
+        equals: z.any().optional().describe("value the jsonPointer must equal"),
+        schemaValid: z.boolean().optional().describe("assert the response matches the spec schema"),
+        expression: z.string().optional().describe("JS expression, truthy = pass, e.g. body.total > 0"),
+      },
+    },
+    async (args) => text(runAssert(session, args)),
+  );
+
+  server.registerTool(
+    "export_report",
+    {
+      title: "Export report",
+      description: "Export the session's assertions and HTTP exchanges as JUnit XML, HAR, or JSON. Writes to `path` if given, else returns inline. Secrets are redacted.",
+      inputSchema: {
+        format: z.enum(["junit", "har", "json"]),
+        path: z.string().optional().describe("file path to write to (optional)"),
+      },
+    },
+    async (args) => text(await exportReport(session, args)),
+  );
+
+  server.registerResource(
+    "report",
+    "app://report",
+    {
+      title: "Live report",
+      description: "Running tally of assertions and requests this session.",
+      mimeType: "application/json",
+    },
+    async (uri) => ({
+      contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(buildReport(session), null, 2) }],
+    }),
+  );
+}
