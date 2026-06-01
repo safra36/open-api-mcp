@@ -26,9 +26,22 @@ claude mcp add open-api-mcp -- node /abs/path/to/open-api-mcp/dist/index.js
 
 Then, in chat: *"load_spec from http://localhost:3000, read app://manifest, exercise the endpoints, then export_report junit."* For absolute-URL calls you don't even need a spec — `http_request` works freeform.
 
+### Auto behaviour (no spec? review the code)
+
+The server ships **connect-time instructions** (sent on `initialize`, folded into the model's context by Claude Code) telling the agent to: discover a spec → **if none is found, read the project's source, build an OpenAPI 3 spec and register it with `synthesize_spec` (in memory, no file dropped in the repo)** → test → report. Reinforcing this, `load_spec` against a spec-less base URL returns a `NO_SPEC_FOUND` action with the exact next steps rather than a dead error. So pointing the agent at a bare base URL is enough — it knows to fall back to code review on its own.
+
+There's also an MCP prompt **`api_test`** (`base_url`, optional `report_path`) — the client-agnostic equivalent of a slash command — that encodes the whole flow in one invocation.
+
+### Missing inputs (base URL, tokens) mid-loop
+
+The agent should never fabricate a base URL or credential. When something is missing:
+
+- **Elicitation** — if the client supports it, the server prompts the user directly. `http_request` with no known target asks *"What base URL is the app running at?"*; `auth_set` called without the secret asks for the token. The answer flows back into the session and the call proceeds.
+- **Fallback** — clients without elicitation get a clear signal instead: tools return `MISSING_INPUT` (no base URL) or `authRequired` (on 401/403), and the connect-time instructions tell the agent to ask the user and retry. So it works everywhere, just via chat instead of a popup.
+
 ## Tools
 
-**Knowledge** — `load_spec` (file / spec URL / base-URL auto-discovery, `$ref`-resolved) · resources `app://manifest`, `app://contract`, `app://session`, `app://report`.
+**Knowledge** — `load_spec` (file / spec URL / base-URL auto-discovery, `$ref`-resolved) · `synthesize_spec` (register an OpenAPI/AsyncAPI doc the agent built from the source code, held **in memory** — no file written to the target project) · `set_target` (prime base URL + token up front to skip prompts) · resources `app://manifest`, `app://contract`, `app://session`, `app://report`.
 
 **HTTP** — `auth_set` (bearer/header/basic/cookie) · `oauth_token` (client_credentials / password / refresh_token, auto-refreshed) · `http_request` (any method, path or absolute URL, `dryRun`/`confirm`) · `http_validate_last` (schema drift).
 

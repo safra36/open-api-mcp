@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { SafetyConfig } from "../config.js";
 import { applyAuth } from "../auth.js";
+import { elicitText } from "../elicit.js";
 import { httpRequest } from "../http/request.js";
 import type { Session } from "../session.js";
 import { validateLast } from "../spec/validate.js";
@@ -23,7 +24,16 @@ export function registerHttp(server: McpServer, session: Session, cfg: SafetyCon
         cookieName: z.string().optional(),
       },
     },
-    async (args) => text({ ok: true, detail: applyAuth(session, args) }),
+    async (args) => {
+      const a = { ...args };
+      // If the agent knows which auth is needed but not the secret, ask the user for it.
+      if (a.type === "bearer" && !a.token) a.token = await elicitText(server, "Paste the bearer token for this API", "token");
+      else if (a.type === "header" && a.headerName && a.value === undefined)
+        a.value = await elicitText(server, `Value for header "${a.headerName}"`, "value");
+      else if (a.type === "cookie" && a.value === undefined && a.token === undefined)
+        a.value = await elicitText(server, `Value for cookie "${a.cookieName ?? "session"}"`, "value");
+      return text({ ok: true, detail: applyAuth(session, a) });
+    },
   );
 
   server.registerTool(
@@ -43,7 +53,14 @@ export function registerHttp(server: McpServer, session: Session, cfg: SafetyCon
         confirm: z.boolean().optional().describe("required to send mutating calls when MCP_REQUIRE_CONFIRM is set"),
       },
     },
-    async (args) => text(await httpRequest(session, cfg, args)),
+    async (args) => {
+      // No target known yet? Ask the user for the base URL rather than guessing.
+      if (!args.url && !session.spec?.baseUrl && !session.baseUrl) {
+        const v = await elicitText(server, "What base URL is the app running at? (e.g. http://localhost:3000)", "base_url");
+        if (v) session.baseUrl = v;
+      }
+      return text(await httpRequest(session, cfg, args));
+    },
   );
 
   server.registerTool(

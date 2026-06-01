@@ -1,9 +1,24 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Session } from "../session.js";
-import { loadSpec } from "../spec/load.js";
+import { applyAuth } from "../auth.js";
+import { isAutoDiscovery, loadSpec, loadSpecFromObject } from "../spec/load.js";
 import { buildManifest } from "../spec/manifest.js";
 import { text } from "../util.js";
+
+function specSummary(spec: { kind: string; title?: string; version?: string; baseUrl?: string; source: string; deref?: any }) {
+  return {
+    loaded: true,
+    kind: spec.kind,
+    title: spec.title,
+    version: spec.version,
+    baseUrl: spec.baseUrl,
+    source: spec.source,
+    paths: Object.keys(spec.deref?.paths ?? {}).length,
+    channels: Object.keys(spec.deref?.channels ?? {}).length,
+    next: "read app://manifest to see operations, then call http_request",
+  };
+}
 
 export function registerKnowledge(server: McpServer, session: Session): void {
   server.registerTool(
@@ -18,19 +33,73 @@ export function registerKnowledge(server: McpServer, session: Session): void {
       },
     },
     async ({ source, baseUrl }) => {
-      session.spec = await loadSpec(source, baseUrl);
-      const { spec } = session;
-      const opCount = Object.keys(spec.deref?.paths ?? {}).length;
-      return text({
-        loaded: true,
-        kind: spec.kind,
-        title: spec.title,
-        version: spec.version,
-        baseUrl: spec.baseUrl,
-        source: spec.source,
-        paths: opCount,
-        next: "read app://manifest to see operations, then call http_request",
-      });
+      try {
+        session.spec = await loadSpec(source, baseUrl);
+      } catch (e) {
+        // Auto-discovery miss: guide the agent to synthesise a spec from the source code
+        // instead of failing, so testing can still proceed with full validation.
+        if (isAutoDiscovery(source)) {
+          return text({
+            loaded: false,
+            discovered: false,
+            baseUrl: baseUrl ?? source,
+            action: "NO_SPEC_FOUND — synthesise one from the source code",
+            do: [
+              "Review this project's source (routes, controllers/handlers, request/response models).",
+              "Build an OpenAPI 3 document covering every endpoint and its response schemas.",
+              "Prefer synthesize_spec({ spec, baseUrl }) to register it in memory (no file written to the target project).",
+              "Or, if you want it persisted, write ./api-spec.json and call load_spec on that file.",
+              "Then read app://manifest and begin testing with http_request + http_validate_last + assert.",
+            ],
+            note: "You can also test freeform without a spec (http_request with absolute url), but you lose schema-drift validation.",
+            detail: (e as Error).message,
+          });
+        }
+        throw e;
+      }
+      return text(specSummary(session.spec));
+    },
+  );
+
+  server.registerTool(
+    "synthesize_spec",
+    {
+      title: "Register a synthesised spec",
+      description:
+        "Register an OpenAPI 3 / AsyncAPI document you built from reading the source code — held in memory, no file written to the target project. Use this when load_spec returns NO_SPEC_FOUND. Then read app://manifest and start testing.",
+      inputSchema: {
+        spec: z.any().describe("the spec as a JSON object (or a JSON string)"),
+        baseUrl: z.string().optional().describe("base URL of the running app to test against"),
+      },
+    },
+    async ({ spec, baseUrl }) => {
+      const doc = typeof spec === "string" ? JSON.parse(spec) : spec;
+      session.spec = await loadSpecFromObject(doc, baseUrl);
+      return text(specSummary(session.spec));
+    },
+  );
+
+  server.registerTool(
+    "set_target",
+    {
+      title: "Set target",
+      description:
+        "Prime the session up front so you aren't prompted later: set the base URL and (optionally) an auth token in one call.",
+      inputSchema: {
+        baseUrl: z.string().describe("base URL of the running app, e.g. http://localhost:3000"),
+        bearerToken: z.string().optional().describe("sets Authorization: Bearer <token>"),
+        apiKeyHeader: z.string().optional().describe("header name for an API key, e.g. X-API-Key"),
+        apiKeyValue: z.string().optional().describe("value for apiKeyHeader"),
+      },
+    },
+    async ({ baseUrl, bearerToken, apiKeyHeader, apiKeyValue }) => {
+      session.baseUrl = baseUrl;
+      if (session.spec) session.spec.baseUrl = baseUrl;
+      const applied: string[] = [];
+      if (bearerToken) applied.push(applyAuth(session, { type: "bearer", token: bearerToken }));
+      if (apiKeyHeader && apiKeyValue !== undefined)
+        applied.push(applyAuth(session, { type: "header", headerName: apiKeyHeader, value: apiKeyValue }));
+      return text({ ok: true, baseUrl, auth: applied });
     },
   );
 
@@ -78,7 +147,7 @@ export function registerKnowledge(server: McpServer, session: Session): void {
       const lr = session.lastResponse;
       const state = {
         specLoaded: !!session.spec,
-        baseUrl: session.spec?.baseUrl,
+        baseUrl: session.spec?.baseUrl ?? session.baseUrl,
         auth: {
           headers: Object.keys(session.auth.headers),
           cookies: Object.keys(session.auth.cookies),

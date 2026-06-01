@@ -89,6 +89,7 @@ export interface OAuthState {
 
 export class Session {
   spec?: LoadedSpec;
+  baseUrl?: string; // fallback target when no spec is loaded (e.g. elicited from the user)
   auth: AuthState = { headers: {}, cookies: {} };
   lastResponse?: LastResponse;
   history: HttpExchange[] = [];

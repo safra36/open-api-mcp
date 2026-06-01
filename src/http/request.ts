@@ -30,8 +30,11 @@ export async function httpRequest(session: Session, cfg: SafetyConfig, a: HttpAr
   if (a.url) {
     urlStr = a.url;
   } else {
-    const base = session.spec?.baseUrl;
-    if (!base) throw new Error("no baseUrl known — load_spec first, pass baseUrl, or use an absolute `url`");
+    const base = session.spec?.baseUrl ?? session.baseUrl;
+    if (!base)
+      throw new Error(
+        "MISSING_INPUT: no base URL known — ask the user for the app's base URL (e.g. http://localhost:3000), or pass an absolute `url`. Do not guess it.",
+      );
     specPath = a.path ?? "/";
     urlStr = joinUrl(base, specPath);
   }
@@ -122,5 +125,9 @@ export async function httpRequest(session: Session, cfg: SafetyConfig, a: HttpAr
     bodyTruncated: shown.truncated,
     body: ct.includes("json") && typeof parsed !== "string" ? parsed : shown.text,
     hint: match ? "run http_validate_last to check this response against the spec" : undefined,
+    authRequired:
+      res.status === 401 || res.status === 403
+        ? "got " + res.status + " — ask the user for credentials, then auth_set / oauth_token, or login via browser_open + browser_capture_auth"
+        : undefined,
   };
 }
