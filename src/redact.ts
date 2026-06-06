@@ -8,6 +8,10 @@ const SENSITIVE = new Set([
   "api-key",
 ]);
 
+export function isSensitiveHeader(name: string): boolean {
+  return SENSITIVE.has(name.toLowerCase());
+}
+
 export function redactHeaders(headers: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(headers)) {

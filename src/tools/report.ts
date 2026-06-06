@@ -29,9 +29,9 @@ export function registerReport(server: McpServer, session: Session): void {
     "export_report",
     {
       title: "Export report",
-      description: "Export the session's assertions and HTTP exchanges as JUnit XML, HAR, or JSON. Writes to `path` if given, else returns inline. Secrets are redacted.",
+      description: "Export the session's assertions and HTTP exchanges as JUnit XML, HAR, JSON, or a runnable Jest suite (`jest`) that replays the executed requests. Writes to `path` if given, else returns inline. Secrets are redacted; the Jest output reads auth from API_AUTH/API_KEY/API_COOKIE env vars.",
       inputSchema: {
-        format: z.enum(["junit", "har", "json"]),
+        format: z.enum(["junit", "har", "json", "jest"]),
         path: z.string().optional().describe("file path to write to (optional)"),
       },
     },
