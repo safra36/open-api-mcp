@@ -172,19 +172,197 @@ export function toJest(session: Session): string {
   return [header, `describe(${jStr(`${title} — contract replay`)}, () => {`, cases, "});", ""].join("\n");
 }
 
+// ---- Markdown: the full human-readable report (all planes + contract + context) ----
+
+const BODY_CAP = 50_000; // per-body char cap so a stray multi-MB payload can't bloat the file
+
+function pct(n: number, d: number): string {
+  return d === 0 ? "—" : Math.round((n / d) * 100) + "%";
+}
+
+/** Mask common secret-bearing JSON keys (token, password, api_key, …) in a body. */
+function redactBodyText(body: string): string {
+  if (!body) return body;
+  return body.replace(
+    /("[^"]*(?:token|password|passwd|secret|api[-_]?key|authorization|client[-_]?secret)[^"]*"\s*:\s*)"(?:[^"\\]|\\.)*"/gi,
+    '$1"***redacted***"',
+  );
+}
+
+/** Escape a value so it stays inside one Markdown table cell. */
+function mdCell(s: unknown): string {
+  return String(s).replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+}
+
+function langFor(mime: string): string {
+  if (/json/i.test(mime)) return "json";
+  if (/html/i.test(mime)) return "html";
+  if (/xml/i.test(mime)) return "xml";
+  return "";
+}
+
+function bodyBlock(raw: string | undefined, mime: string): string {
+  if (raw === undefined || raw === "") return "_(empty)_";
+  const red = redactBodyText(raw);
+  const capped =
+    red.length > BODY_CAP ? red.slice(0, BODY_CAP) + `\n…[truncated ${red.length - BODY_CAP} chars]` : red;
+  return "```" + langFor(mime) + "\n" + capped + "\n```";
+}
+
+function headerTable(headers: Record<string, string>): string {
+  const red = redactHeaders(headers);
+  const keys = Object.keys(red);
+  if (!keys.length) return "_(none)_";
+  return ["| Header | Value |", "| --- | --- |", ...keys.map((k) => `| ${mdCell(k)} | ${mdCell(red[k])} |`)].join("\n");
+}
+
+/** Compact ddmmyy stamp for the default report filename. */
+export function ddmmyy(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return p(d.getDate()) + p(d.getMonth() + 1) + p(d.getFullYear() % 100);
+}
+
+export function toMarkdown(session: Session, generatedAt: string): string {
+  const passed = session.results.filter((r) => r.ok).length;
+  const failed = session.results.length - passed;
+  const spec = session.spec;
+  const target = spec?.baseUrl ?? session.baseUrl ?? "_(not set)_";
+  const wsFrames = [...session.sockets.values()].reduce((n, s) => n + s.frames.length, 0);
+  const opCount = Object.keys(spec?.deref?.paths ?? spec?.bundled?.paths ?? {}).length;
+  const synthesized = spec?.source === "synthesized (in-memory)";
+  const overall =
+    session.results.length === 0 ? "— no assertions" : failed === 0 ? "✅ PASS" : `❌ FAIL (${failed})`;
+
+  const o: string[] = [];
+  o.push("# API Test Report", "");
+  o.push("| | |", "| --- | --- |");
+  o.push(`| **Generated** | ${generatedAt} |`);
+  o.push(`| **Target** | ${mdCell(target)} |`);
+  if (spec) o.push(`| **Contract** | ${mdCell(`${spec.title ?? "untitled"} ${spec.version ?? ""} (${spec.kind})`)} |`);
+  o.push(`| **Result** | ${overall} |`);
+  o.push("");
+
+  o.push("## Summary", "");
+  o.push("| Metric | Value |", "| --- | --- |");
+  o.push(`| Assertions | ${session.results.length} (✅ ${passed} / ❌ ${failed} — ${pct(passed, session.results.length)} pass) |`);
+  o.push(`| HTTP requests | ${session.history.length} |`);
+  o.push(`| WebSocket sockets | ${session.sockets.size} (${wsFrames} frames) |`);
+  o.push(`| Browser network events | ${session.net.length} |`);
+  o.push(`| Browser console messages | ${session.console.length} |`);
+  o.push("");
+
+  o.push("## Contract & Test Oracle", "");
+  if (!spec) {
+    o.push("_No spec was loaded — requests were issued freeform, without schema-drift validation._", "");
+  } else {
+    o.push(`- **Title:** ${spec.title ?? "untitled"} ${spec.version ?? ""}`.trim());
+    o.push(`- **Kind:** ${spec.kind}`);
+    o.push(
+      `- **Source:** ${spec.source}` +
+        (synthesized
+          ? " — synthesized from the target's source code, held in memory (no file written to the project). This derived contract is the mock/oracle every response below was validated against."
+          : ""),
+    );
+    o.push(`- **Base URL:** ${spec.baseUrl ?? "_(none)_"}`);
+    o.push(`- **Operations covered by the contract:** ${opCount}`);
+    o.push("");
+  }
+
+  o.push("## Assertions", "");
+  if (!session.results.length) {
+    o.push("_No assertions were recorded this session._", "");
+  } else {
+    o.push("| # | Result | Name | Detail | Time |", "| --- | --- | --- | --- | --- |");
+    session.results.forEach((r, i) =>
+      o.push(`| ${i + 1} | ${r.ok ? "✅" : "❌"} | ${mdCell(r.name)} | ${mdCell(r.detail)} | ${new Date(r.at).toISOString()} |`),
+    );
+    o.push("");
+  }
+
+  o.push("## HTTP Exchanges", "");
+  if (!session.history.length) {
+    o.push("_No HTTP requests were made._", "");
+  } else {
+    session.history.forEach((e, i) => {
+      o.push(`### ${i + 1}. \`${e.request.method} ${e.request.url}\``, "");
+      o.push(`- **Status:** ${`${e.response.status} ${e.response.statusText}`.trim()}`);
+      o.push(`- **Duration:** ${e.durationMs} ms`);
+      o.push(`- **Started:** ${new Date(e.startedAt).toISOString()}`, "");
+      o.push("**Request headers**", "", headerTable(e.request.headers), "");
+      o.push("**Request body**", "", bodyBlock(e.request.body, e.request.headers["content-type"] ?? ""), "");
+      o.push("**Response headers**", "", headerTable(e.response.headers), "");
+      o.push("**Response body**", "", bodyBlock(e.response.bodyText, e.response.mimeType), "");
+    });
+  }
+
+  if (session.sockets.size) {
+    o.push("## WebSocket", "");
+    for (const s of session.sockets.values()) {
+      const state = s.open
+        ? "open"
+        : `closed${s.closeInfo ? ` (code ${s.closeInfo.code}${s.closeInfo.reason ? `, ${s.closeInfo.reason}` : ""})` : ""}`;
+      o.push(`### \`${s.id}\` — ${mdCell(s.url)}`, "");
+      o.push(`- **State:** ${state}`);
+      o.push(`- **Frames:** ${s.frames.length}`, "");
+      if (s.frames.length) {
+        o.push("| # | Dir | Time | Data |", "| --- | --- | --- | --- |");
+        s.frames.forEach((f, i) =>
+          o.push(`| ${i + 1} | ${f.dir === "in" ? "⬇ in" : "⬆ out"} | ${new Date(f.at).toISOString()} | ${mdCell(redactBodyText(f.data)).slice(0, 500)} |`),
+        );
+        o.push("");
+      }
+    }
+  }
+
+  if (session.net.length) {
+    o.push("## Browser — Network", "");
+    o.push("| # | At | Kind | Method | Status | URL |", "| --- | --- | --- | --- | --- | --- |");
+    session.net.forEach((n, i) =>
+      o.push(`| ${i + 1} | ${new Date(n.at).toISOString()} | ${n.kind} | ${n.method ?? ""} | ${n.status ?? ""} | ${mdCell(n.url)} |`),
+    );
+    o.push("");
+  }
+
+  if (session.console.length) {
+    o.push("## Browser — Console", "");
+    o.push("| # | At | Type | Message |", "| --- | --- | --- | --- |");
+    session.console.forEach((c, i) =>
+      o.push(`| ${i + 1} | ${new Date(c.at).toISOString()} | ${c.type} | ${mdCell(c.text)} |`),
+    );
+    o.push("");
+  }
+
+  o.push("## Session Context", "");
+  const authKeys = Object.keys(session.auth.headers);
+  o.push(`- **Auth headers:** ${authKeys.length ? authKeys.join(", ") + " (values redacted)" : "_(none)_"}`);
+  o.push(`- **Cookies:** ${Object.keys(session.auth.cookies).length}`);
+  if (session.oauth.grant)
+    o.push(`- **OAuth grant:** ${session.oauth.grant}${session.oauth.tokenUrl ? ` @ ${session.oauth.tokenUrl}` : ""}`);
+  o.push("", "---", `_Generated by open-api-mcp — secrets redacted, bodies capped at ${BODY_CAP.toLocaleString("en-US")} chars._`, "");
+
+  return o.join("\n");
+}
+
 export async function exportReport(
   session: Session,
-  args: { format: "junit" | "har" | "json" | "jest"; path?: string },
+  args: { format: "junit" | "har" | "json" | "jest" | "markdown"; path?: string },
 ): Promise<unknown> {
   let content: string;
+  let defaultPath: string | undefined;
   if (args.format === "junit") content = toJUnit(session);
   else if (args.format === "har") content = JSON.stringify(toHAR(session), null, 2);
   else if (args.format === "jest") content = toJest(session);
-  else content = JSON.stringify(buildReport(session), null, 2);
+  else if (args.format === "markdown") {
+    const now = new Date();
+    content = toMarkdown(session, now.toISOString());
+    defaultPath = `test-report-${ddmmyy(now)}.md`; // the persisted final report
+  } else content = JSON.stringify(buildReport(session), null, 2);
 
-  if (args.path) {
-    await writeFile(args.path, content, "utf8");
-    return { written: args.path, format: args.format, bytes: content.length };
+  // Markdown is the deliverable final report: always write a file, defaulting to test-report-ddmmyy.md.
+  const path = args.path ?? defaultPath;
+  if (path) {
+    await writeFile(path, content, "utf8");
+    return { written: path, format: args.format, bytes: content.length };
   }
   return { format: args.format, content };
 }

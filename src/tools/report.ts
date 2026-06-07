@@ -29,10 +29,11 @@ export function registerReport(server: McpServer, session: Session): void {
     "export_report",
     {
       title: "Export report",
-      description: "Export the session's assertions and HTTP exchanges as JUnit XML, HAR, JSON, or a runnable Jest suite (`jest`) that replays the executed requests. Writes to `path` if given, else returns inline. Secrets are redacted; the Jest output reads auth from API_AUTH/API_KEY/API_COOKIE env vars.",
+      description:
+        "Export the session's results. Formats: `markdown` — the full, human-readable final report covering every plane (contract/oracle, assertions, each HTTP request+response with headers and bodies, WebSocket frames, browser network & console, session context); `junit` XML; `har`; `json`; or a runnable `jest` suite that replays the executed requests. Writes to `path` if given. `markdown` always writes a file, defaulting to `test-report-ddmmyy.md` in the working directory; other formats return inline when no `path` is given. Secrets are redacted; the Jest output reads auth from API_AUTH/API_KEY/API_COOKIE env vars.",
       inputSchema: {
-        format: z.enum(["junit", "har", "json", "jest"]),
-        path: z.string().optional().describe("file path to write to (optional)"),
+        format: z.enum(["markdown", "junit", "har", "json", "jest"]),
+        path: z.string().optional().describe("file path to write to (markdown defaults to ./test-report-ddmmyy.md)"),
       },
     },
     async (args) => text(await exportReport(session, args)),

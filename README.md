@@ -24,7 +24,7 @@ npx playwright install chromium   # only needed for the browser_* tools
 claude mcp add open-api-mcp -- node /abs/path/to/open-api-mcp/dist/index.js
 ```
 
-Then, in chat: *"load_spec from http://localhost:3000, read app://manifest, exercise the endpoints, then export_report junit."* For absolute-URL calls you don't even need a spec — `http_request` works freeform.
+Then, in chat: *"load_spec from http://localhost:3000, read app://manifest, exercise the endpoints, then export_report markdown."* — the last step writes a full `test-report-ddmmyy.md`. For absolute-URL calls you don't even need a spec — `http_request` works freeform.
 
 ### Auto behaviour (no spec? review the code)
 
@@ -49,7 +49,12 @@ The agent should never fabricate a base URL or credential. When something is mis
 
 **Browser** (Playwright in-process) — `browser_open` · `browser_snapshot` (aria tree) · `browser_act` · `browser_eval` · `browser_screenshot` · `browser_network` (page HTTP **and** WS frames) · `browser_console` · `browser_capture_auth` (UI login → cookies/token to all planes) · `browser_close`.
 
-**Assertions & reporting** — `assert` (status / bodyContains / jsonPointer+equals / schemaValid / JS expression) · `export_report` (JUnit / HAR / JSON / a runnable **Jest** suite that replays the executed requests; secrets redacted, Jest output reads auth from `API_AUTH`/`API_KEY`/`API_COOKIE`).
+**Assertions & reporting** — `assert` (status / bodyContains / jsonPointer+equals / schemaValid / JS expression) · `export_report`:
+- **`markdown`** — the full, human-readable **final report**: contract/oracle (flagging a synthesized in-memory spec as the mock contract), every assertion, each HTTP request+response with headers and bodies, WebSocket frames, browser network & console, and session context. Always written to a file — defaults to **`test-report-ddmmyy.md`** in the working directory.
+- **`junit`** / **`har`** / **`json`** — CI artifacts; returned inline when no `path` is given.
+- **`jest`** — a runnable suite that replays the executed requests (reads auth from `API_AUTH`/`API_KEY`/`API_COOKIE`).
+
+Secrets are redacted across every format (auth headers, cookies, and common token/password/secret body fields; bodies capped at 50k chars in the Markdown report).
 
 ## Configuration (env)
 
