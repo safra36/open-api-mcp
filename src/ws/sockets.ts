@@ -1,4 +1,5 @@
 import WebSocket from "ws";
+import { INSECURE_TLS, preferIpv4Loopback } from "../tls.js";
 import { cookieHeader } from "../util.js";
 import type { Session, SocketEntry, SocketFrame } from "../session.js";
 import { validateFrame } from "../spec/asyncapi.js";
@@ -14,7 +15,8 @@ export function wsConnect(
   const cookie = cookieHeader(session.auth.cookies);
   if (cookie && !headers["Cookie"]) headers["Cookie"] = cookie;
 
-  const ws = new WebSocket(args.url, { headers });
+  const url = preferIpv4Loopback(new URL(args.url)).toString();
+  const ws = new WebSocket(url, { headers, ...(INSECURE_TLS ? { rejectUnauthorized: false } : {}) });
   const entry: SocketEntry = {
     id,
     url: args.url,

@@ -3,6 +3,7 @@ import type { Session } from "../session.js";
 import { ensureFreshToken } from "../oauth.js";
 import { rateLimit } from "../ratelimit.js";
 import { findMatchingPath } from "../spec/match.js";
+import { preferIpv4Loopback } from "../tls.js";
 import { cookieHeader, deriveSpecPath, hasHeader, joinUrl, mergeSetCookie, truncate } from "../util.js";
 
 const REQUIRE_CONFIRM = /^(1|true|yes|on)$/i.test(process.env.MCP_REQUIRE_CONFIRM ?? "");
@@ -39,7 +40,7 @@ export async function httpRequest(session: Session, cfg: SafetyConfig, a: HttpAr
     urlStr = joinUrl(base, specPath);
   }
 
-  const u = new URL(urlStr);
+  const u = preferIpv4Loopback(new URL(urlStr));
   if (a.query) for (const [k, v] of Object.entries(a.query)) u.searchParams.set(k, String(v));
   if (!hostAllowed(cfg, u.toString())) throw new Error(`host not in allowlist: ${u.host}`);
 

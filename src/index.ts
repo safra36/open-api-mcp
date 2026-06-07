@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "./tls.js"; // applies MCP_TLS_INSECURE at startup, before any connection is made
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { loadConfig } from "./config.js";
 import { Session } from "./session.js";
