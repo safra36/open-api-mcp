@@ -30,7 +30,7 @@ Then, in chat: *"load_spec from http://localhost:3000, read app://manifest, exer
 
 The server ships **connect-time instructions** (sent on `initialize`, folded into the model's context by Claude Code) telling the agent to: discover a spec → **if none is found, read the project's source, build an OpenAPI 3 spec and register it with `synthesize_spec` (in memory, no file dropped in the repo)** → test → report. Reinforcing this, `load_spec` against a spec-less base URL returns a `NO_SPEC_FOUND` action with the exact next steps rather than a dead error. So pointing the agent at a bare base URL is enough — it knows to fall back to code review on its own.
 
-There's also an MCP prompt **`api_test`** (`base_url`, optional `report_path`) — the client-agnostic equivalent of a slash command — that encodes the whole flow in one invocation.
+There are also MCP prompts — the client-agnostic equivalent of slash commands — that encode whole flows in one invocation: **`api_test`** (`base_url`, optional `report_path`) runs the discover → test → report loop, and **`jest_suite`** (`base_url`, optional `test_dir`) drives a live session and then writes a dedicated Jest test folder (unit + contract + replay).
 
 ### Missing inputs (base URL, tokens) mid-loop
 
@@ -49,7 +49,7 @@ The agent should never fabricate a base URL or credential. When something is mis
 
 **Browser** (Playwright in-process) — `browser_open` · `browser_snapshot` (aria tree) · `browser_act` · `browser_eval` · `browser_screenshot` · `browser_network` (page HTTP **and** WS frames) · `browser_console` · `browser_capture_auth` (UI login → cookies/token to all planes) · `browser_close`.
 
-**Assertions & reporting** — `assert` (status / bodyContains / jsonPointer+equals / schemaValid / JS expression) · `export_report` (JUnit / HAR / JSON; secrets redacted).
+**Assertions & reporting** — `assert` (status / bodyContains / jsonPointer+equals / schemaValid / JS expression) · `export_report` (JUnit / HAR / JSON / a runnable **Jest** suite that replays the executed requests; secrets redacted, Jest output reads auth from `API_AUTH`/`API_KEY`/`API_COOKIE`).
 
 ## Configuration (env)
 
@@ -64,6 +64,7 @@ The agent should never fabricate a base URL or credential. When something is mis
 | `MCP_MAX_BODY_BYTES` | `100000` | response body truncation in tool output |
 | `MCP_BROWSER_HEADED` | off | show the browser |
 | `MCP_BROWSER_MAX` | `4` | max concurrent browser contexts |
+| `MCP_TLS_INSECURE` | off | accept self-signed/invalid TLS certs across all planes (HTTP, WS, browser) and route `localhost`→`127.0.0.1`; **local dev only** |
 
 ## HTTP transport
 
