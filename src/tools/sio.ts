@@ -10,14 +10,15 @@ export function registerSio(server: McpServer, session: Session): void {
     {
       title: "Open Socket.IO connection",
       description:
-        "Open a Socket.IO (Engine.IO) connection. Auth headers/cookies are applied as extraHeaders, and a session bearer token is forwarded as handshake auth.token. The namespace defaults to the URL path. Returns a socket id.",
+        "Open a Socket.IO (Engine.IO) connection. Supports BOTH auth styles: (1) cookie-session — the session cookie jar (from an HTTP/browser login) plus any explicit headers are sent as the handshake's HTTP headers, so the server reads socket.request.headers.cookie; and (2) token/handshake — a session bearer token (and the `auth` arg) is offered as handshake auth.token. The namespace defaults to the URL path. Returns a socket id.",
       inputSchema: {
         url: z.string().describe("http:// or https:// origin, optionally with a namespace path (e.g. http://host/chat)"),
         id: z.string().optional().describe("name this socket (defaults to sio1, sio2, …)"),
         namespace: z.string().optional().describe("Socket.IO namespace, e.g. /chat (overrides the URL path)"),
         auth: z.record(z.any()).optional().describe("handshake auth payload, e.g. { token } or { apiKey }"),
-        headers: z.record(z.string()).optional(),
+        headers: z.record(z.string()).optional().describe("extra handshake HTTP headers, e.g. { Cookie } for cookie-session auth"),
         path: z.string().optional().describe("engine.io mount path (default /socket.io)"),
+        transports: z.array(z.enum(["websocket", "polling"])).optional().describe("transport preference order (default [websocket, polling])"),
       },
     },
     async (args) => text(await sioConnect(session, args)),

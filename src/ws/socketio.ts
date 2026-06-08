@@ -21,17 +21,27 @@ export function sioConnect(
     auth?: Record<string, unknown>;
     headers?: Record<string, string>;
     path?: string;
+    transports?: Array<"websocket" | "polling">;
   },
 ): Promise<unknown> {
   const id = args.id ?? `sio${session.sockets.size + 1}`;
   if (session.sockets.get(id)?.open) throw new Error(`socket id "${id}" is already open`);
 
+  // Cookie-session auth: forward the session cookie jar (populated by an HTTP/browser login)
+  // and any session auth headers as the handshake's HTTP headers. An explicit Cookie wins, but
+  // we still merge in jar cookies it doesn't already carry so both sources reach socket.request.
   const extraHeaders: Record<string, string> = { ...session.auth.headers, ...(args.headers ?? {}) };
-  const cookie = cookieHeader(session.auth.cookies);
-  if (cookie && !extraHeaders["Cookie"]) extraHeaders["Cookie"] = cookie;
+  const jar = cookieHeader(session.auth.cookies);
+  if (jar) {
+    const explicit = extraHeaders["Cookie"];
+    const have = new Set((explicit ?? "").split(/;\s*/).map((c) => c.split("=")[0]).filter(Boolean));
+    const extra = jar.split(/;\s*/).filter((c) => !have.has(c.split("=")[0]));
+    const merged = [explicit, ...extra].filter(Boolean).join("; ");
+    if (merged) extraHeaders["Cookie"] = merged;
+  }
 
-  // Fold a bearer token from session auth into the Socket.IO handshake `auth` payload, where
-  // servers using socket.io middleware typically read it (handshake.auth.token).
+  // Token auth: a bearer token from session auth is also offered as handshake `auth.token`, where
+  // socket.io middleware commonly reads it. This is additive — cookie-session auth above still works.
   const bearer = session.auth.headers["Authorization"]?.replace(/^Bearer\s+/i, "");
   const auth: Record<string, unknown> = { ...(bearer ? { token: bearer } : {}), ...(args.auth ?? {}) };
 
@@ -41,7 +51,9 @@ export function sioConnect(
   const origin = base.origin;
 
   const sio = io(origin + (namespace === "/" ? "" : namespace), {
-    transports: ["websocket"],
+    // Prefer websocket but allow the polling handshake to fall back to — cookie-session servers
+    // that wire auth into the HTTP handshake may reject a websocket-only connection.
+    transports: args.transports ?? ["websocket", "polling"],
     extraHeaders,
     auth,
     ...(args.path ? { path: args.path } : {}),
