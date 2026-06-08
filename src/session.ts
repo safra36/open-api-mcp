@@ -117,4 +117,6 @@ export class Session {
   pages = new Map<string, Page>();
   net: BrowserNetEntry[] = [];
   console: ConsoleEntry[] = [];
+  tracing = false; // a Playwright trace is currently recording on `context`
+  tracePath?: string; // last saved trace .zip (browser_trace stop / browser_close)
 }

@@ -49,7 +49,7 @@ The agent should never fabricate a base URL or credential. When something is mis
 
 **Socket.IO** — `sio_connect` (namespace; **cookie-session** auth via the session cookie jar / explicit `Cookie` header **and** token auth via handshake `auth`/forwarded bearer; transport-configurable) · `sio_emit` (named event, multi-arg payload, optional `ack` wait) · `sio_recv` (next/named event, timeout + regex) · `sio_expect` (assert an event payload matches an AsyncAPI message schema) · `sio_close`.
 
-**Browser** (Playwright in-process) — `browser_open` · `browser_snapshot` (aria tree) · `browser_act` · `browser_eval` · `browser_screenshot` · `browser_network` (page HTTP **and** WS frames) · `browser_console` · `browser_capture_auth` (UI login → cookies/token to all planes) · `browser_close`.
+**Browser** (Playwright in-process) — `browser_open` · `browser_snapshot` (aria tree) · `browser_act` · `browser_eval` · `browser_screenshot` · `browser_trace` (start/stop a Playwright **trace** — screenshots + DOM snapshots + network, viewable with `npx playwright show-trace`) · `browser_network` (page HTTP **and** WS frames) · `browser_console` · `browser_capture_auth` (UI login → cookies/token to all planes) · `browser_close`.
 
 **Assertions & reporting** — `assert` (status / bodyContains / jsonPointer+equals / schemaValid / JS expression) · `export_report`:
 - **`markdown`** — the full, human-readable **final report**: contract/oracle (flagging a synthesized in-memory spec as the mock contract), every assertion, each HTTP request+response with headers and bodies, WebSocket frames, browser network & console, and session context. Always written to a file — defaults to **`test-report-ddmmyy.md`** in the working directory.
@@ -71,6 +71,7 @@ Secrets are redacted across every format (auth headers, cookies, and common toke
 | `MCP_MAX_BODY_BYTES` | `100000` | response body truncation in tool output |
 | `MCP_BROWSER_HEADED` | off | show the browser |
 | `MCP_BROWSER_MAX` | `4` | max concurrent browser contexts |
+| `MCP_BROWSER_TRACE` | off | auto-record a Playwright trace per context (saved on `browser_close`) |
 | `MCP_TLS_INSECURE` | off | accept self-signed/invalid TLS certs across all planes (HTTP, WS, browser) and route `localhost`→`127.0.0.1`; **local dev only** |
 
 ## HTTP transport

@@ -106,6 +106,20 @@ export function registerBrowser(server: McpServer, session: Session): void {
   );
 
   server.registerTool(
+    "browser_trace",
+    {
+      title: "Record Playwright trace",
+      description:
+        "Start or stop a Playwright trace (screenshots + DOM snapshots + network + sources) of the browser session. `stop` saves a .zip you open with `npx playwright show-trace <file>` to time-travel through the run. Auto-starts when MCP_BROWSER_TRACE is set, and is auto-saved on browser_close. The saved path is also listed in the markdown report.",
+      inputSchema: {
+        action: z.enum(["start", "stop"]),
+        path: z.string().optional().describe("output .zip path for stop (default browser-trace-ddmmyy.zip in cwd)"),
+      },
+    },
+    async (args) => text(await b.browserTrace(session, args)),
+  );
+
+  server.registerTool(
     "browser_close",
     {
       title: "Close browser",

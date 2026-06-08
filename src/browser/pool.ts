@@ -4,6 +4,9 @@ import { INSECURE_TLS } from "../tls.js";
 const HEADED = /^(1|true|yes|on)$/i.test(process.env.MCP_BROWSER_HEADED ?? "");
 const MAX_CONTEXTS = Number(process.env.MCP_BROWSER_MAX ?? 4);
 
+/** When set, every browser context records a Playwright trace (screenshots + DOM snapshots). */
+export const TRACE_ON = /^(1|true|yes|on)$/i.test(process.env.MCP_BROWSER_TRACE ?? "");
+
 let browser: Browser | undefined;
 let contextCount = 0;
 
