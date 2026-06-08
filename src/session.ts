@@ -1,4 +1,5 @@
 import type { WebSocket } from "ws";
+import type { Socket as IOSocket } from "socket.io-client";
 import type { BrowserContext, Page } from "playwright";
 
 export interface AuthState {
@@ -34,18 +35,32 @@ export interface SocketFrame {
   at: number;
   dir: "in" | "out";
   data: string;
+  event?: string; // Socket.IO event name (undefined for raw WebSocket frames)
+  ack?: boolean; // out-frame awaited an ack, or in-frame is the ack payload
 }
 
-export interface SocketEntry {
+interface SocketEntryBase {
   id: string;
   url: string;
-  ws: WebSocket;
   open: boolean;
   frames: SocketFrame[]; // full history (in + out)
-  inbox: SocketFrame[]; // inbound frames not yet consumed by ws_recv
+  inbox: SocketFrame[]; // inbound frames not yet consumed by *_recv
   waiters: Array<(f: SocketFrame) => void>;
   closeInfo?: { code: number; reason: string };
 }
+
+export interface WsSocketEntry extends SocketEntryBase {
+  kind: "ws";
+  ws: WebSocket;
+}
+
+export interface SioSocketEntry extends SocketEntryBase {
+  kind: "socketio";
+  sio: IOSocket;
+  namespace?: string;
+}
+
+export type SocketEntry = WsSocketEntry | SioSocketEntry;
 
 export interface BrowserNetEntry {
   at: number;

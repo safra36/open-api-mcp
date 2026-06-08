@@ -152,7 +152,7 @@ export function registerKnowledge(server: McpServer, session: Session): void {
           headers: Object.keys(session.auth.headers),
           cookies: Object.keys(session.auth.cookies),
         },
-        sockets: [...session.sockets.values()].map((s) => ({ id: s.id, url: s.url, open: s.open, frames: s.frames.length })),
+        sockets: [...session.sockets.values()].map((s) => ({ id: s.id, kind: s.kind, url: s.url, open: s.open, frames: s.frames.length })),
         browserPages: [...session.pages.keys()],
         lastResponse: lr
           ? { method: lr.method, url: lr.url, status: lr.status, operationId: lr.operationId, matchedPath: lr.matchedPath }

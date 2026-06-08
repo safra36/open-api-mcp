@@ -246,7 +246,7 @@ export function toMarkdown(session: Session, generatedAt: string): string {
   o.push("| Metric | Value |", "| --- | --- |");
   o.push(`| Assertions | ${session.results.length} (✅ ${passed} / ❌ ${failed} — ${pct(passed, session.results.length)} pass) |`);
   o.push(`| HTTP requests | ${session.history.length} |`);
-  o.push(`| WebSocket sockets | ${session.sockets.size} (${wsFrames} frames) |`);
+  o.push(`| Sockets (WS / Socket.IO) | ${session.sockets.size} (${wsFrames} frames) |`);
   o.push(`| Browser network events | ${session.net.length} |`);
   o.push(`| Browser console messages | ${session.console.length} |`);
   o.push("");
@@ -296,18 +296,22 @@ export function toMarkdown(session: Session, generatedAt: string): string {
   }
 
   if (session.sockets.size) {
-    o.push("## WebSocket", "");
+    o.push("## WebSocket / Socket.IO", "");
     for (const s of session.sockets.values()) {
+      const transport = s.kind === "socketio" ? "Socket.IO" : "WebSocket";
       const state = s.open
         ? "open"
         : `closed${s.closeInfo ? ` (code ${s.closeInfo.code}${s.closeInfo.reason ? `, ${s.closeInfo.reason}` : ""})` : ""}`;
-      o.push(`### \`${s.id}\` — ${mdCell(s.url)}`, "");
+      o.push(`### \`${s.id}\` — ${transport} — ${mdCell(s.url)}`, "");
       o.push(`- **State:** ${state}`);
+      if (s.kind === "socketio" && s.namespace) o.push(`- **Namespace:** ${mdCell(s.namespace)}`);
       o.push(`- **Frames:** ${s.frames.length}`, "");
       if (s.frames.length) {
-        o.push("| # | Dir | Time | Data |", "| --- | --- | --- | --- |");
+        o.push("| # | Dir | Time | Event | Data |", "| --- | --- | --- | --- | --- |");
         s.frames.forEach((f, i) =>
-          o.push(`| ${i + 1} | ${f.dir === "in" ? "⬇ in" : "⬆ out"} | ${new Date(f.at).toISOString()} | ${mdCell(redactBodyText(f.data)).slice(0, 500)} |`),
+          o.push(
+            `| ${i + 1} | ${f.dir === "in" ? "⬇ in" : "⬆ out"} | ${new Date(f.at).toISOString()} | ${mdCell(f.event ?? "")} | ${mdCell(redactBodyText(f.data)).slice(0, 500)} |`,
+          ),
         );
         o.push("");
       }

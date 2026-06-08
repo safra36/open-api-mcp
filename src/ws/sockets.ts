@@ -1,8 +1,9 @@
 import WebSocket from "ws";
 import { INSECURE_TLS, preferIpv4Loopback } from "../tls.js";
 import { cookieHeader } from "../util.js";
-import type { Session, SocketEntry, SocketFrame } from "../session.js";
+import type { Session, WsSocketEntry, SocketFrame } from "../session.js";
 import { validateFrame } from "../spec/asyncapi.js";
+import { deliver, receive } from "./inbox.js";
 
 export function wsConnect(
   session: Session,
@@ -17,7 +18,8 @@ export function wsConnect(
 
   const url = preferIpv4Loopback(new URL(args.url)).toString();
   const ws = new WebSocket(url, { headers, ...(INSECURE_TLS ? { rejectUnauthorized: false } : {}) });
-  const entry: SocketEntry = {
+  const entry: WsSocketEntry = {
+    kind: "ws",
     id,
     url: args.url,
     ws,
@@ -29,15 +31,11 @@ export function wsConnect(
   session.sockets.set(id, entry);
 
   ws.on("message", (data, isBinary) => {
-    const frame: SocketFrame = {
+    deliver(entry, {
       at: Date.now(),
       dir: "in",
       data: isBinary ? `<binary ${(data as Buffer).length}b>` : data.toString(),
-    };
-    entry.frames.push(frame);
-    const waiter = entry.waiters.shift();
-    if (waiter) waiter(frame);
-    else entry.inbox.push(frame);
+    });
   });
   ws.on("close", (code, reason) => {
     entry.open = false;
@@ -56,9 +54,11 @@ export function wsConnect(
   });
 }
 
-function getOpen(session: Session, id: string): SocketEntry {
+function getOpen(session: Session, id: string): WsSocketEntry {
   const entry = session.sockets.get(id);
   if (!entry) throw new Error(`no socket with id "${id}"`);
+  if (entry.kind !== "ws")
+    throw new Error(`socket "${id}" is a Socket.IO connection — use the sio_* tools`);
   return entry;
 }
 
@@ -79,36 +79,7 @@ export function wsRecv(
   const entry = getOpen(session, args.id);
   const re = args.match ? new RegExp(args.match) : undefined;
   const matches = (f: SocketFrame) => !re || re.test(f.data);
-
-  const buffered = entry.inbox.findIndex(matches);
-  if (buffered >= 0) {
-    const [frame] = entry.inbox.splice(buffered, 1);
-    return Promise.resolve({ id: args.id, frame });
-  }
-  if (!entry.open) return Promise.resolve({ id: args.id, frame: null, closed: entry.closeInfo });
-
-  const timeoutMs = args.timeoutMs ?? 5000;
-  return new Promise((resolve) => {
-    let done = false;
-    const waiter = (f: SocketFrame) => {
-      if (done) return;
-      if (!matches(f)) {
-        entry.inbox.push(f); // not what we wanted — keep it for later
-        entry.waiters.push(waiter);
-        return;
-      }
-      done = true;
-      clearTimeout(timer);
-      resolve({ id: args.id, frame: f });
-    };
-    const timer = setTimeout(() => {
-      done = true;
-      const i = entry.waiters.indexOf(waiter);
-      if (i >= 0) entry.waiters.splice(i, 1);
-      resolve({ id: args.id, frame: null, timedOut: true });
-    }, timeoutMs);
-    entry.waiters.push(waiter);
-  });
+  return receive(entry, matches, args.timeoutMs ?? 5000).then((r) => ({ id: args.id, ...r }));
 }
 
 export async function wsExpect(

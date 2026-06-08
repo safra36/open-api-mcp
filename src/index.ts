@@ -27,7 +27,7 @@ async function main() {
   );
 
   const shutdown = async () => {
-    for (const s of session.sockets.values()) s.ws.close();
+    for (const s of session.sockets.values()) s.kind === "ws" ? s.ws.close() : s.sio.close();
     await shutdownPool();
     process.exit(0);
   };

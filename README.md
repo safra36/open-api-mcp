@@ -1,6 +1,6 @@
 # open-api-mcp
 
-An MCP server for **AI-driven API integration testing**. Point it at a deployed service and let an agent drive it across three planes — HTTP, WebSocket, and a real browser — with **spec-aware validation**: it doesn't just call endpoints, it checks responses and frames against the schemas your OpenAPI / AsyncAPI docs promised, and reports drift.
+An MCP server for **AI-driven API integration testing**. Point it at a deployed service and let an agent drive it across four planes — HTTP, WebSocket, Socket.IO, and a real browser — with **spec-aware validation**: it doesn't just call endpoints, it checks responses and frames against the schemas your OpenAPI / AsyncAPI docs promised, and reports drift.
 
 ## Why this over gluing existing servers together
 
@@ -46,6 +46,8 @@ The agent should never fabricate a base URL or credential. When something is mis
 **HTTP** — `auth_set` (bearer/header/basic/cookie) · `oauth_token` (client_credentials / password / refresh_token, auto-refreshed) · `http_request` (any method, path or absolute URL, `dryRun`/`confirm`) · `http_validate_last` (schema drift).
 
 **WebSocket** — `ws_connect` · `ws_send` · `ws_recv` (timeout + regex) · `ws_expect` (assert a typed AsyncAPI message arrives) · `ws_close`.
+
+**Socket.IO** — `sio_connect` (namespace, handshake `auth`, session bearer forwarded as `auth.token`) · `sio_emit` (named event, multi-arg payload, optional `ack` wait) · `sio_recv` (next/named event, timeout + regex) · `sio_expect` (assert an event payload matches an AsyncAPI message schema) · `sio_close`.
 
 **Browser** (Playwright in-process) — `browser_open` · `browser_snapshot` (aria tree) · `browser_act` · `browser_eval` · `browser_screenshot` · `browser_network` (page HTTP **and** WS frames) · `browser_console` · `browser_capture_auth` (UI login → cookies/token to all planes) · `browser_close`.
 
